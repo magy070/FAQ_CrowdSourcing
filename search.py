@@ -1,77 +1,68 @@
 import json
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, util
 
-# Step 1: Load the FAQ data
+# Load FAQ data
 with open("clean_faqs.json", "r", encoding="utf-8") as f:
     faqs = json.load(f)
 
 print(f"Loaded {len(faqs)} FAQs")
 
-# Step 2: Load the AI model
-print("Loading model... (first time may take a minute)")
+# Load model
+print("Loading model...")
 model = SentenceTransformer("all-MiniLM-L6-v2")
 print("Model loaded!")
 
-# Step 3: Extract just the questions
+# Extract questions and generate embeddings
 questions = [faq["question"] for faq in faqs]
-
-# Step 4: Generate embeddings for all questions
 print("Generating embeddings...")
-embeddings = model.encode(questions)
+question_embeddings = model.encode(questions, convert_to_tensor=True)
+print(f"Done! {len(questions)} questions embedded.")
 
-print(f"Done! Each question is now a list of {len(embeddings[0])} numbers")
-print(f"Total embeddings created: {len(embeddings)}")
-
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-
-def search(query, top_k=3):
-    # Step 1: Convert the user's query into an embedding
-    query_embedding = model.encode([query])
+def search(user_query, top_k=3):
+    # Encode user query
+    query_embedding = model.encode(user_query, convert_to_tensor=True)
     
-    # Step 2: Compare it with all FAQ embeddings
-    similarities = cosine_similarity(query_embedding, embeddings)[0]
+    # Compute similarity scores
+    scores = util.cos_sim(query_embedding, question_embeddings)[0]
     
-    # Step 3: Get top_k most similar questions
-    top_indices = np.argsort(similarities)[::-1][:top_k]
+    # Get top results
+    top_results = scores.argsort(descending=True)[:top_k]
     
-    # Step 4: Return the results
-    results = []
-    for i in top_indices:
-        results.append({
-            "question": faqs[i]["question"],
-            "answer": faqs[i]["answer"],
-            "category": faqs[i]["category"],
-            "score": round(float(similarities[i]), 4)
-        })
-    
-    return results
+    best_score = scores[top_results[0]].item()
 
-# Test it!
-user_query = input("Enter your question: ")
-print(f"\nSearching for: '{user_query}'")
-print("-" * 50)
+    # Level 1 — exact match
+    if best_score > 0.9:
+        print("\n Found an exact answer!\n")
+        idx = top_results[0].item()
+        print(f"Q : {faqs[idx]['question']}")
+        print(f"A : {faqs[idx]['answer']}")
 
-results = search(user_query)
-
-if results[0]["score"] > 0.9:
-    # Exact match found
-    print("Found an exact answer!\n")
-    r = results[0]
-    print(f"Q : {r['question']}")
-    print(f"A : {r['answer']}")
-
-elif results[0]["score"] > 0.5:
-    # Similar results
-    print("Here are the most relevant FAQs:\n")
-    for r in results:
-        if r["score"] > 0.5:
-            print(f"Score : {r['score']}")
-            print(f"Q     : {r['question']}")
-            print(f"A     : {r['answer']}")
+    # Level 2 — similar results
+    elif best_score > 0.5:
+        print("\n🔍 Here are the most relevant FAQs:\n")
+        for rank in top_results:
+            idx = rank.item()
+            score = round(scores[idx].item(), 3)
+            print(f"Score : {score}")
+            print(f"Q     : {faqs[idx]['question']}")
+            print(f"A     : {faqs[idx]['answer']}")
             print("-" * 50)
 
-else:
-    # No good match
-    print("Sorry, no relevant FAQ found for your question.")
-    print("You can raise this as a new query!") 
+    # Level 3 — nothing found
+    else:
+        print("\n Sorry, no relevant FAQ found for your question.")
+        print("You can raise this as a new query!")
+
+# Main loop
+print("\nFAQ Search Engine Ready!")
+print("Type 'exit' to quit\n")
+
+while True:
+    query = input("Enter your question: ")
+    
+    if query.lower() == "exit":
+        print("Goodbye!")
+        break
+    
+    search(query)
+    print()
