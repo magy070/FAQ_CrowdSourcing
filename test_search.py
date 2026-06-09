@@ -1,3 +1,11 @@
+
+from scraper import scrape_faqs
+print("Updating FAQs from website...\n")
+
+scrape_faqs()
+
+print("Latest FAQs loaded.\n")
+
 print("DEBUG: New version running")
 
 from sentence_transformers import SentenceTransformer, util
@@ -5,6 +13,7 @@ import json
 
 # Load FAQ data
 with open("clean_faqs.json", "r", encoding="utf-8") as f:
+#with open("../clean_faqs.json", "r", encoding="utf-8") as f:
     faqs = json.load(f)
 
 # Load model
